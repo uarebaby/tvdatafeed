@@ -8,27 +8,14 @@ More information about this will be found in the TvDatafeedLive section down bel
 A simple TradingView historical Data Downloader. Tvdatafeed allows downloading upto 5000 bars on any of the supported timeframe.
 
 If you found the content useful and want to support my work, you can buy me a coffee!
-[![](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://www.buymeacoffee.com/StreamAlpha)
 
 ## Installation
 
 This module can be installed from github repo
 
 ```sh
-pip install --upgrade --no-cache-dir git+https://github.com/rongardF/tvdatafeed.git
+pip install --upgrade --no-cache-dir git+https://github.com/uarebaby/tvdatafeed.git
 ```
-
-For usage instructions, watch these videos-
-
-v1.2 tutorial with installation and backtrader usage
-
-[![Watch the video](https://img.youtube.com/vi/f76dOZW2gwI/hqdefault.jpg)](https://youtu.be/f76dOZW2gwI)
-
-Full tutorial
-
-[![Watch the video](https://img.youtube.com/vi/qDrXmb2ZRjo/hqdefault.jpg)](https://youtu.be/qDrXmb2ZRjo)
-
----
 
 ## About release 2.0.0
 
@@ -56,6 +43,25 @@ tv = TvDatafeed()
 ```
 
 when using without login, following warning will be shown `you are using nologin method, data you access may be limited`
+
+### Automatic Login with Token Caching
+
+To avoid logging in every time you run your script, you can use the `autologin=True` parameter. This will save your authentication token to a file named `tv_auth_token.json` in the directory where your script is executed.
+
+**First-time Usage:**
+On the first run, provide your credentials along with `autologin=True`. This will log you in and create the token file for future use.
+```python
+tv = TvDatafeed(username='YourTradingViewUsername', password='YourTradingViewPassword', autologin=True)
+```
+
+**Subsequent Usage:**
+Once the `tv_auth_token.json` file exists, you can initialize the library without your credentials. The session will be loaded from the saved token, making initialization faster.
+```python
+tv = TvDatafeed(autologin=True)
+```
+
+**Handling Expired Tokens:**
+If you start experiencing issues with data retrieval (e.g., the `get_hist` method returns `None`), your saved token may have expired. To fix this, simply delete the `tv_auth_token.json` file. The next time you run the script with your username, password, and `autologin=True`, a new token will be generated and saved.
 
 ---
 
@@ -97,15 +103,6 @@ You need to provide search text and optional exchange. This will return a list o
 tv.search_symbol('CRUDE','MCX')
 ```
 
----
-
-## Calculating Indicators
-
-Indicators data is not downloaded from tradingview. For that you can use [TA-Lib](https://github.com/mrjbq7/ta-lib). Check out this video for installation and usage instructions-
-
-[![Watch the video](https://img.youtube.com/vi/0MeHXJm9HRk/hqdefault.jpg)](https://youtu.be/0MeHXJm9HRk)
-
----
 
 ## Live feed (TvDatafeedLive)
 
