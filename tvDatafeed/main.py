@@ -40,17 +40,46 @@ class TvDatafeed:
         self,
         username: str = None,
         password: str = None,
+        autologin: bool = False,
     ) -> None:
         """Create TvDatafeed object
 
         Args:
             username (str, optional): tradingview username. Defaults to None.
             password (str, optional): tradingview password. Defaults to None.
+            autologin (bool, optional): save and reuse auth token. Defaults to False.
         """
 
         self.ws_debug = False
+        self.token = None
+        self.__token_file = 'tv_auth_token.json'
+        self.username = username
+        self.password = password
+        self.autologin = autologin
 
-        self.token = self.__auth(username, password)
+        if self.autologin:
+            try:
+                with open(self.__token_file, 'r') as f:
+                    loaded_token = json.load(f)['auth_token']
+                
+                if self.__is_token_valid(loaded_token):
+                    self.token = loaded_token
+                    logger.info("auth_token loaded from file and is valid")
+                else:
+                    logger.warning("auth_token from file is invalid, will login again.")
+
+            except Exception:
+                logger.info("could not load auth_token from file")
+
+        if self.token is None and self.username and self.password:
+            self.token = self.__auth(self.username, self.password)
+            if self.token and self.autologin:
+                try:
+                    with open(self.__token_file, 'w') as f:
+                        json.dump({'auth_token': self.token}, f)
+                    logger.info("new auth_token saved to file")
+                except Exception as e:
+                    logger.error(f"error saving auth_token to file: {e}")
 
         if self.token is None:
             self.token = "unauthorized_user_token"
@@ -61,6 +90,45 @@ class TvDatafeed:
         self.ws = None
         self.session = self.__generate_session()
         self.chart_session = self.__generate_chart_session()
+
+    def __is_token_valid(self, token: str) -> bool:
+        logger.debug("testing token validity")
+        try:
+            self.__create_connection()
+            self.ws.settimeout(self.__ws_timeout)
+            
+            self.__send_message("set_auth_token", [token])
+            
+            test_chart_session = self.__generate_chart_session()
+            self.__send_message("chart_create_session", [test_chart_session, ""])
+            
+            symbol = "NASDAQ:AAPL"
+            symbol_payload = '={"symbol":"' + symbol + '","adjustment":"splits","session":"regular"}'
+            
+            self.__send_message("resolve_symbol", [test_chart_session, "symbol_1", symbol_payload])
+            self.__send_message("create_series", [test_chart_session, "s1", "s1", "symbol_1", "1D", 1])
+            
+            while True:
+                result = self.ws.recv()
+                if "timescale_update" in result:
+                    logger.debug("token is valid")
+                    self.ws.close()
+                    return True
+                if "critical_error" in result or "auth_error" in result or "symbol_error" in result:
+                    logger.warning(f"token invalid, server response: {result}")
+                    self.ws.close()
+                    return False
+        except Exception as e:
+            logger.debug(f"token validation failed with exception: {e}")
+            if self.ws:
+                try:
+                    self.ws.close()
+                except Exception:
+                    pass
+            return False
+        # this is reachable if the loop times out without a definitive answer
+        logger.debug("token validation timed out")
+        return False
 
     def __auth(self, username, password):
 
