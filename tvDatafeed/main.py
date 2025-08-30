@@ -53,31 +53,23 @@ class TvDatafeed:
         self.ws_debug = False
         self.token = None
         self.__token_file = 'tv_auth_token.json'
-        self.username = username
-        self.password = password
-        self.autologin = autologin
 
-        if self.autologin:
+        if autologin:
             try:
                 with open(self.__token_file, 'r') as f:
-                    loaded_token = json.load(f)['auth_token']
-                
-                if self.__is_token_valid(loaded_token):
-                    self.token = loaded_token
-                    logger.info("auth_token loaded from file and is valid")
-                else:
-                    logger.warning("auth_token from file is invalid, will login again.")
-
+                    self.token = json.load(f)['auth_token']
+                logger.info("auth_token loaded from file")
             except Exception:
                 logger.info("could not load auth_token from file")
-
-        if self.token is None and self.username and self.password:
-            self.token = self.__auth(self.username, self.password)
-            if self.token and self.autologin:
+                self.token = None
+        
+        if self.token is None:
+            self.token = self.__auth(username, password)
+            if self.token and autologin:
                 try:
                     with open(self.__token_file, 'w') as f:
                         json.dump({'auth_token': self.token}, f)
-                    logger.info("new auth_token saved to file")
+                    logger.info("auth_token saved to file")
                 except Exception as e:
                     logger.error(f"error saving auth_token to file: {e}")
 
@@ -142,9 +134,13 @@ class TvDatafeed:
             try:
                 response = requests.post(
                     url=self.__sign_in_url, data=data, headers=self.__signin_headers)
+                response.raise_for_status()
                 token = response.json()['user']['auth_token']
             except Exception as e:
-                logger.error('error while signin')
+                logger.error(f'error while signin: {e}')
+                if 'response' in locals():
+                    logger.error(f'Response status code: {response.status_code}')
+                    logger.error(f'Response content: {response.text}')
                 token = None
 
         return token
