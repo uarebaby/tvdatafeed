@@ -45,7 +45,11 @@ class TvDatafeed:
             "Chrome/131.0.0.0 Safari/537.36"
         ),
     }
-    __ws_timeout = 5
+    # Short WebSocket timeouts caused frequent recv() failures in get_hist on WSL / slower networks.
+    __hist_ws_timeout = 90
+    # Token check talks to the same WS path as get_hist but must wait for chart data;
+    # 5s is often too short and looks like an "invalid" token on slower links.
+    __token_validation_timeout = 30
 
     def __init__(
         self,
@@ -68,7 +72,8 @@ class TvDatafeed:
         if autologin:
             try:
                 with open(self.__token_file, 'r') as f:
-                    self.token = json.load(f)['auth_token']
+                    raw = json.load(f)['auth_token']
+                self.token = raw.strip() if isinstance(raw, str) else raw
                 logger.info("auth_token loaded from file")
             except Exception:
                 logger.info("could not load auth_token from file")
@@ -97,8 +102,12 @@ class TvDatafeed:
     def __is_token_valid(self, token: str) -> bool:
         logger.debug("testing token validity")
         try:
-            self.__create_connection()
-            self.ws.settimeout(self.__ws_timeout)
+            self.ws = create_connection(
+                "wss://data.tradingview.com/socket.io/websocket",
+                headers=self.__ws_headers,
+                timeout=self.__token_validation_timeout,
+            )
+            self.ws.settimeout(self.__token_validation_timeout)
             
             self.__send_message("set_auth_token", [token])
             
@@ -167,11 +176,15 @@ class TvDatafeed:
 
         return token
 
-    def __create_connection(self):
+    def __create_connection(self, socket_timeout=None):
         logging.debug("creating websocket connection")
+        t = socket_timeout if socket_timeout is not None else self.__hist_ws_timeout
         self.ws = create_connection(
-            "wss://data.tradingview.com/socket.io/websocket", headers=self.__ws_headers, timeout=self.__ws_timeout
+            "wss://data.tradingview.com/socket.io/websocket",
+            headers=self.__ws_headers,
+            timeout=t,
         )
+        self.ws.settimeout(t)
 
     @staticmethod
     def __filter_raw_message(text):
@@ -299,7 +312,9 @@ class TvDatafeed:
 
         interval = interval.value
 
-        self.__create_connection()
+        # Larger requests need more time before TradingView sends series_completed.
+        recv_timeout = min(240, max(self.__hist_ws_timeout, 45 + n_bars // 20))
+        self.__create_connection(socket_timeout=recv_timeout)
 
         self.__send_message("set_auth_token", [self.token])
         self.__send_message("chart_create_session", [self.chart_session, ""])

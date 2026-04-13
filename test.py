@@ -12,9 +12,9 @@ password = os.environ.get("TRADINGVIEW_PASSWORD", "xxxx")
 
 try:
     tv = TvDatafeed(
-        username=username,
-        password=password,
-        autologin=True,
+        #username=username,
+        #password=password,
+        autologin=True
     )
 
     logged_in = tv.token != "unauthorized_user_token"
