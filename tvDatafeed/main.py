@@ -33,7 +33,18 @@ class TvDatafeed:
     __sign_in_url = 'https://www.tradingview.com/accounts/signin/'
     __search_url = 'https://symbol-search.tradingview.com/symbol_search/?text={}&hl=1&exchange={}&lang=en&type=&domain=production'
     __ws_headers = json.dumps({"Origin": "https://data.tradingview.com"})
-    __signin_headers = {'Referer': 'https://www.tradingview.com'}
+    # TradingView returns code "rate_limit" for bare script-like requests without a browser User-Agent.
+    __signin_headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+        "Origin": "https://www.tradingview.com",
+        "Referer": "https://www.tradingview.com/",
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/131.0.0.0 Safari/537.36"
+        ),
+    }
     __ws_timeout = 5
 
     def __init__(
@@ -132,15 +143,26 @@ class TvDatafeed:
                     "password": password,
                     "remember": "on"}
             try:
-                response = requests.post(
-                    url=self.__sign_in_url, data=data, headers=self.__signin_headers)
+                # Session + landing page helps some edge/CDN cases; keeps cookies for the sign-in POST.
+                session = requests.Session()
+                session.headers.update(self.__signin_headers)
+                session.get("https://www.tradingview.com/", timeout=15)
+                response = session.post(
+                    self.__sign_in_url, data=data, timeout=15
+                )
                 response.raise_for_status()
-                token = response.json()['user']['auth_token']
+                payload = response.json()
+                user = payload.get("user") or {}
+                token = user.get("auth_token")
+                if not token:
+                    code = payload.get("code", "")
+                    err = payload.get("error", payload)
+                    logger.error(f"signin failed ({code}): {err}")
             except Exception as e:
-                logger.error(f'error while signin: {e}')
-                if 'response' in locals():
-                    logger.error(f'Response status code: {response.status_code}')
-                    logger.error(f'Response content: {response.text}')
+                logger.error(f"error while signin: {e}")
+                if "response" in locals():
+                    logger.error(f"Response status code: {response.status_code}")
+                    logger.error(f"Response content: {response.text}")
                 token = None
 
         return token
